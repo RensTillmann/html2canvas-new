@@ -44,6 +44,7 @@ import {PAINT_ORDER_LAYER} from '../../css/property-descriptors/paint-order';
 import {Renderer} from '../renderer';
 import {Context} from '../../core/context';
 import {DIRECTION} from '../../css/property-descriptors/direction';
+import {layout} from './textarea-layout';
 
 export type RenderConfigurations = RenderOptions & {
     backgroundColor: Color | null;
@@ -144,16 +145,29 @@ export class CanvasRenderer extends Renderer {
         }
     }
 
-    renderTextWithLetterSpacing(text: TextBounds, letterSpacing: number, baseline: number): void {
-        if (letterSpacing === 0) {
-            this.ctx.fillText(text.text, text.bounds.left, text.bounds.top + baseline);
-        } else {
-            const letters = segmentGraphemes(text.text);
-            letters.reduce((left, letter) => {
-                this.ctx.fillText(letter, left, text.bounds.top + baseline);
+    renderTextWithLetterSpacing(text: TextBounds, letterSpacing: number, baseline: number, lineHeight?: number): void {
+        if (lineHeight === undefined) {
+            if (letterSpacing === 0) {
+                this.ctx.fillText(text.text, text.bounds.left, text.bounds.top + baseline);
+            } else {
+                const letters = segmentGraphemes(text.text);
+                letters.reduce((left, letter) => {
+                    this.ctx.fillText(letter, left, text.bounds.top + baseline);
 
-                return left + this.ctx.measureText(letter).width;
-            }, text.bounds.left);
+                    return left + this.ctx.measureText(letter).width;
+                }, text.bounds.left);
+            }
+        }else{
+            const letters = segmentGraphemes(text.text);
+            const pos = layout(letters, text.bounds.width, (s, len) =>
+                this.ctx.measureText(s).width + letterSpacing * (len - 1));
+            const dx = text.bounds.left;
+            const dy = text.bounds.top + lineHeight / 2;
+            for (let i = 0; i < pos.length; i++) {
+                if (pos[i][0] >= 0) {
+                    this.ctx.fillText(letters[i], pos[i][0] + dx, pos[i][1] * lineHeight + dy);
+                }
+            }
         }
     }
 
@@ -421,10 +435,12 @@ export class CanvasRenderer extends Renderer {
             ]);
 
             this.ctx.clip();
+            const lineHeight = (container instanceof TextareaElementContainer) ? computeLineHeight(styles.lineHeight, styles.fontSize.number) : undefined;
             this.renderTextWithLetterSpacing(
                 new TextBounds(container.value, textBounds),
                 styles.letterSpacing,
-                baseline
+                baseline,
+                lineHeight
             );
             this.ctx.restore();
             this.ctx.textBaseline = 'alphabetic';
